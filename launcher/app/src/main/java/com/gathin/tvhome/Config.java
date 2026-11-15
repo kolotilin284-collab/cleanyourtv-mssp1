@@ -22,6 +22,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -685,19 +686,18 @@ final class Config {
         if (chosenRows >= 0 && chosenRows <= 3) rowsBelow = chosenRows;
         animations = choices.getBoolean("animations", animations);
         advancedEffects = choices.getBoolean("advanced_effects", advancedEffects);
-        File wallpaper = dir != null ? new File(dir, WALLPAPER_NAME) : null;
+        // A theme can also switch the wallpaper off while the file is still there.
+        boolean wallpaperEnabled = json == null || bool(json, "wallpaper", true);
+        File wallpaper = (dir != null && wallpaperEnabled) ? new File(dir, WALLPAPER_NAME) : null;
         if (wallpaper != null && !(wallpaper.isFile() && wallpaper.length() > 0)) wallpaper = null;
         File internalWallpaper = new File(ctx.getFilesDir(), WALLPAPER_NAME);
         if (wallpaper != null) {
             syncFile(wallpaper, internalWallpaper);
-        } else if (!mounted && internalWallpaper.isFile() && internalWallpaper.length() > 0) {
+        } else if (!mounted && internalWallpaper.isFile() && internalWallpaper.length() > 0 && wallpaperEnabled) {
             wallpaper = internalWallpaper;
-        } else if (mounted) {
+        } else if (mounted || !wallpaperEnabled) {
             internalWallpaper.delete();
         }
-        // A theme can also switch the wallpaper off while the file is still there.
-        boolean wallpaperEnabled = json == null || bool(json, "wallpaper", true);
-        if (!wallpaperEnabled) wallpaper = null;
         int rotationMinutes = json == null ? 0 : integer(json, "wallpaper_rotation_minutes", 0, 0, 1440);
         int wallpaperDim = json == null ? 0 : integer(json, "wallpaper_dim", 0, 0, 90);
         int dockOpacity = json == null ? 100 : integer(json, "dock_opacity", 100, 30, 100);
@@ -832,24 +832,71 @@ final class Config {
         JSONObject json = read(file);
         if (json == null) {
             copy.delete();
-        } else {
-            synchronized (SYNC_LOCK) {
-                File tmp = new File(ctx.getFilesDir(), FILE_NAME + ".tmp");
-                try (FileOutputStream out = new FileOutputStream(tmp)) {
-                    out.write(json.toString().getBytes(StandardCharsets.UTF_8));
-                    out.flush();
-                } catch (IOException e) {
-                    tmp.delete();
-                    Log.w(TAG, "could not keep a copy of " + file + ": " + e.getMessage());
-                    return json;
-                }
-                if (!tmp.renameTo(copy)) {
-                    tmp.delete();
-                    Log.w(TAG, "could not rename staging copy of " + file);
-                }
-            }
+            return null;
+        }
+        JSONObject cached = read(copy);
+        if (!jsonEquals(json, cached)) {
+            writeAtomically(copy, json.toString());
         }
         return json;
+    }
+
+    private static void writeAtomically(File dst, String content) {
+        synchronized (SYNC_LOCK) {
+            File parent = dst.getParentFile();
+            if (parent == null) return;
+            File tmp = new File(parent, dst.getName() + ".tmp");
+            try (FileOutputStream out = new FileOutputStream(tmp)) {
+                out.write(content.getBytes(StandardCharsets.UTF_8));
+                out.flush();
+            } catch (IOException e) {
+                tmp.delete();
+                Log.w(TAG, "could not write copy of " + dst + ": " + e.getMessage());
+                return;
+            }
+            if (!tmp.renameTo(dst)) {
+                tmp.delete();
+            }
+        }
+    }
+
+    static boolean jsonEquals(JSONObject a, JSONObject b) {
+        if (a == b) return true;
+        if (a == null || b == null) return false;
+        if (a.length() != b.length()) return false;
+        Iterator<String> keys = a.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            if (!b.has(key)) return false;
+            Object valA = a.opt(key);
+            Object valB = b.opt(key);
+            if (!valueEquals(valA, valB)) return false;
+        }
+        return true;
+    }
+
+    static boolean jsonEquals(JSONArray a, JSONArray b) {
+        if (a == b) return true;
+        if (a == null || b == null || a.length() != b.length()) return false;
+        for (int i = 0; i < a.length(); i++) {
+            if (!valueEquals(a.opt(i), b.opt(i))) return false;
+        }
+        return true;
+    }
+
+    private static boolean valueEquals(Object a, Object b) {
+        if (a == b) return true;
+        if (a == null || b == null) return false;
+        if (a instanceof JSONObject && b instanceof JSONObject) {
+            return jsonEquals((JSONObject) a, (JSONObject) b);
+        }
+        if (a instanceof JSONArray && b instanceof JSONArray) {
+            return jsonEquals((JSONArray) a, (JSONArray) b);
+        }
+        if (a instanceof Number && b instanceof Number) {
+            return Double.compare(((Number) a).doubleValue(), ((Number) b).doubleValue()) == 0;
+        }
+        return a.equals(b);
     }
 
     private static final Object SYNC_LOCK = new Object();

@@ -1106,9 +1106,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             return;
         }
         if (storageUnmounted && Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState())) {
-            storageUnmounted = false;
-            Config check = Config.load(this);
-            if (check.wallpaper != null || !check.wallpapers.isEmpty() || check.overlayApplied) {
+            File dir = Config.dir(this);
+            if (dir != null && dir.isDirectory() && dir.canRead()) {
+                storageUnmounted = false;
                 recreate();
                 return;
             }
