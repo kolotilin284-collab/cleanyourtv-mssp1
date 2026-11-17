@@ -10,12 +10,21 @@ final class Options {
     static final String SKY = "sky";
     static final String PRINTS = "prints";
     static final String WEATHER = "weather";
+    static final String ANIMATION = "animation";
+    static final String SECONDS_PER_PICTURE = "seconds_per_picture";
+    static final String IDLE_MINUTES = "idle_minutes";
+
+    static final int DEFAULT_SECONDS_PER_PICTURE = 20;
+    static final int DEFAULT_IDLE_MINUTES = 10;
 
     final boolean clock;
     final boolean dates;
     final boolean sky;
     final boolean prints;
     final boolean weather;
+    final boolean animation;
+    final int secondsPerPicture;
+    final int idleMinutes;
 
     private Options(SharedPreferences p) {
         clock = p.getBoolean(CLOCK, false);
@@ -23,6 +32,9 @@ final class Options {
         sky = p.getBoolean(SKY, false);
         prints = p.getBoolean(PRINTS, false);
         weather = p.getBoolean(WEATHER, false);
+        animation = p.getBoolean(ANIMATION, true);
+        secondsPerPicture = p.getInt(SECONDS_PER_PICTURE, DEFAULT_SECONDS_PER_PICTURE);
+        idleMinutes = p.getInt(IDLE_MINUTES, DEFAULT_IDLE_MINUTES);
     }
 
     static SharedPreferences preferences(Context context) {
